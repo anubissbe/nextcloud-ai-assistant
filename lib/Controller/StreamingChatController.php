@@ -68,7 +68,7 @@ class StreamingChatController extends OCSController {
 		// Get configuration
 		$providerURL = $this->appConfig->getValueString(Application::APP_ID, 'external_ai_provider_url', '');
 		$apiKey = $this->appConfig->getValueString(Application::APP_ID, 'external_ai_provider_api_key', '');
-		$model = $this->appConfig->getValueString(Application::APP_ID, 'external_ai_provider_model', 'phi3:mini');
+		$model = $this->appConfig->getValueString(Application::APP_ID, 'external_ai_provider_model', 'openai-gpt-20b-optimized');
 		$streamingEnabled = $this->appConfig->getValueString(Application::APP_ID, 'external_ai_streaming_enabled', '1') === '1';
 
 		if (empty($providerURL)) {
@@ -128,7 +128,7 @@ class StreamingChatController extends OCSController {
 			header('Cache-Control: no-cache');
 			header('X-Accel-Buffering: no'); // Disable nginx buffering
 
-			// Build request payload (Ollama/OpenAI compatible format)
+			// Build request payload (OpenAI-compatible format for GPUStack)
 			$payload = [
 				'model' => $model,
 				'messages' => $history,
@@ -151,13 +151,15 @@ class StreamingChatController extends OCSController {
 
 			// Prepare cURL for streaming
 			$ch = curl_init();
-			$url = rtrim($providerURL, '/') . '/api/chat';
+			// Use OpenAI-compatible endpoint (works with GPUStack, OpenAI, LocalAI)
+			$url = rtrim($providerURL, '/') . '/chat/completions';
 
 			curl_setopt($ch, CURLOPT_URL, $url);
 			curl_setopt($ch, CURLOPT_POST, true);
 			curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
 			curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
 			curl_setopt($ch, CURLOPT_HEADER, false);
+			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // For self-signed certs
 
 			$headers = ['Content-Type: application/json'];
 			if (!empty($apiKey)) {
@@ -165,20 +167,27 @@ class StreamingChatController extends OCSController {
 			}
 			curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
-			// Stream callback
+			// Stream callback for OpenAI-compatible format
 			$fullResponse = '';
 			curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($curl, $data) use (&$fullResponse) {
 				$lines = explode("\n", $data);
 				foreach ($lines as $line) {
 					$line = trim($line);
-					if (empty($line)) {
+					if (empty($line) || $line === 'data: [DONE]') {
 						continue;
+					}
+
+					// Remove "data: " prefix if present
+					if (strpos($line, 'data: ') === 0) {
+						$line = substr($line, 6);
 					}
 
 					try {
 						$json = json_decode($line, true);
-						if (isset($json['message']['content'])) {
-							$content = $json['message']['content'];
+
+						// OpenAI/GPUStack format: choices[0].delta.content
+						if (isset($json['choices'][0]['delta']['content'])) {
+							$content = $json['choices'][0]['delta']['content'];
 							$fullResponse .= $content;
 
 							// Send SSE event
@@ -187,8 +196,8 @@ class StreamingChatController extends OCSController {
 							flush();
 						}
 
-						// Check if done
-						if (isset($json['done']) && $json['done'] === true) {
+						// Check if done (OpenAI format)
+						if (isset($json['choices'][0]['finish_reason']) && $json['choices'][0]['finish_reason'] !== null) {
 							echo "event: done\n";
 							echo "data: " . json_encode(['full_response' => $fullResponse]) . "\n\n";
 							flush();
