@@ -53,6 +53,13 @@ class Admin implements ISettings {
 		$chattyLLMUserInstructionsTitle = $this->appConfig->getValueString(Application::APP_ID, 'chat_user_instructions_title', Application::CHAT_USER_INSTRUCTIONS_TITLE) ?: Application::CHAT_USER_INSTRUCTIONS_TITLE;
 		$chattyLLMLastNMessages = (int)$this->appConfig->getValueString(Application::APP_ID, 'chat_last_n_messages', '10');
 
+		// External AI provider settings for streaming
+		$externalAIEnabled = $this->appConfig->getValueString(Application::APP_ID, 'external_ai_enabled', '0') === '1';
+		$externalAIProviderURL = $this->appConfig->getValueString(Application::APP_ID, 'external_ai_provider_url', '');
+		$externalAIProviderAPIKey = $this->appConfig->getValueString(Application::APP_ID, 'external_ai_provider_api_key', '');
+		$externalAIProviderModel = $this->appConfig->getValueString(Application::APP_ID, 'external_ai_provider_model', 'phi3:mini');
+		$externalAIStreamingEnabled = $this->appConfig->getValueString(Application::APP_ID, 'external_ai_streaming_enabled', '1') === '1';
+
 		$adminConfig = [
 			'text_processing_available' => $taskProcessingAvailable,
 			'assistant_enabled' => $assistantEnabled,
@@ -66,6 +73,12 @@ class Admin implements ISettings {
 			'chat_user_instructions' => $chattyLLMUserInstructions,
 			'chat_user_instructions_title' => $chattyLLMUserInstructionsTitle,
 			'chat_last_n_messages' => $chattyLLMLastNMessages,
+			// External AI provider configuration
+			'external_ai_enabled' => $externalAIEnabled,
+			'external_ai_provider_url' => $externalAIProviderURL,
+			'external_ai_provider_api_key' => $externalAIProviderAPIKey,
+			'external_ai_provider_model' => $externalAIProviderModel,
+			'external_ai_streaming_enabled' => $externalAIStreamingEnabled,
 		];
 		$this->initialStateService->provideInitialState('admin-config', $adminConfig);
 
